@@ -1,7 +1,8 @@
 -- todo
 -- - change presentation of widget to be shown below autoturn
 -- - show page duration on menu
--- - compute confiability as standard deviations 
+-- - show popup with computed information after array is filled
+-- - add checkbox on the menu to activate plugin
 
 
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -55,7 +56,7 @@ function autoturnCompute:updateAverage()
         sum = sum + ppm
     end
     self.average_duration = sum / #self.duration_history
-end
+}
 
 function autoturnCompute:computeStandardDeviation()
     if #self.duration_history < 2 then
@@ -72,7 +73,7 @@ function autoturnCompute:computeStandardDeviation()
     local variance = sum_of_squared_differences / #self.duration_history
     self.std_dev = math.sqrt(variance)
     logger.info("autoturnCompute:computeStandardDeviation - Standard Deviation:", self.std_dev)
-end
+}
 
 function autoturnCompute:onPageUpdate(new_page)
     local now = os.time()
