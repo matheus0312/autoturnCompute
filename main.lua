@@ -1,0 +1,139 @@
+-- todo
+-- - change presentation of widget to be shown below autoturn
+-- - show page duration on menu
+-- - compute confiability as standard deviations 
+-- - save history between suspend and resume
+-- - change history size based on confiability
+
+
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local UIManager = require("ui/uimanager")
+local logger = require("logger")
+local _ = require("gettext")
+local T = require("ffi/util").template
+
+local autoturnCompute = WidgetContainer:extend{
+    name = "autoturn_compute",
+    is_doc_only = true,
+    
+    -- State variables
+    current_page = nil,
+    page_start_time = nil,
+    duration_history = {},
+    max_history_size = 10,
+    average_duration = 0,
+}
+
+function autoturnCompute:init()
+    self.ui.menu:registerToMainMenu(self)
+    
+    -- Initialize variables to defaults.
+    -- DO NOT call self.ui.document methods here (causes crash).
+    self.current_page = nil
+    self.page_start_time = os.time()
+    self.duration_history = {}
+    
+    logger.info("autoturnCompute:init - Plugin loaded")
+end
+
+-- This function is called automatically when the document engine is fully loaded
+function autoturnCompute:onReaderReady()
+    self.current_page = self.ui:getCurrentPage()
+    self.page_start_time = os.time()
+    
+    logger.info("autoturnCompute:onReaderReady - Initialized. Current Page:", self.current_page)
+end
+
+function autoturnCompute:updateAverage()
+    if #self.duration_history == 0 then
+        self.average_duration = 0
+        logger.info("autoturnCompute:updateAverage - initialize duration average to 0")
+        return
+    end
+    local sum = 0
+    for _, ppm in ipairs(self.duration_history) do
+        sum = sum + ppm
+    end
+    self.average_duration = sum / #self.duration_history
+end
+
+function autoturnCompute:onPageUpdate(new_page)
+    local now = os.time()
+    
+    -- Calculate stats for the page we just FINISHED (self.current_page)
+    if self.current_page and self.page_start_time and self.current_page ~= new_page then
+        local duration = os.difftime(now, self.page_start_time)
+        
+        logger.info("autoturnCompute:onPageUpdate - Last Page Duration: ", duration)
+        
+        if duration > 5 and duration < 600 then
+                
+            table.insert(self.duration_history, duration)
+            if #self.duration_history > self.max_history_size then
+                table.remove(self.duration_history, 1)
+                    
+                logger.info("autoturnCompute:onPageUpdate - remove oldest ppm history entry")
+            end
+                
+            self:updateAverage()
+            logger.info("autoturnCompute:onPageUpdate - Page", self.current_page, "Time:", duration, "Avg:", self.average_duration)
+
+        else
+            logger.info("autoturnCompute:onPageUpdate - page duration out of bounds, skipping.")
+        end
+    end
+    
+    -- Setup for the NEW page
+    self.current_page = new_page
+    self.page_start_time = now
+    
+    logger.info("autoturnCompute:onPageUpdate - current page number:", new_page)
+end
+
+function autoturnCompute:onSuspend()
+    self.page_start_time = nil
+    logger.info("autoturnCompute:onSuspend")
+    
+end
+
+function autoturnCompute:onResume()
+    self.page_start_time = os.time()
+    logger.info("autoturnCompute:onResume")
+end
+
+function autoturnCompute:addToMainMenu(menu_items)
+    menu_items.autoturn_compute = {
+        text = _("Autoturn Compute"),
+        sub_item_table = {
+            {
+                text_func = function()
+                    return T(_("Current Average Page Duration: %1"), math.floor(self.average_duration))
+                end,
+                callback = function()
+                    local InfoMessage = require("ui/widget/infomessage")
+                    UIManager:show(InfoMessage:new{
+                        text = T(_("Based on the last %1 pages.\n\nLatest Page Duration: %2 seconds \nAverage Page Duration: %3 seconds"), 
+                            #self.duration_history,
+                            self.duration_history[#self.duration_history] and math.floor(self.duration_history[#self.duration_history]) or 0,
+                            math.floor(self.average_duration)
+                        ),
+                    })
+                end
+            },
+            {
+                text = _("Reset History"),
+                callback = function()
+                    self.duration_history = {}
+                    self.average_duration = 0
+                    self.page_start_time = os.time()
+                    local InfoMessage = require("ui/widget/infomessage")
+                    UIManager:show(InfoMessage:new{
+                        text = _("Autoturn Compute history has been reset."),
+                    })
+                end
+            }
+        }
+    }
+end
+
+return autoturnCompute
