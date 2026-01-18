@@ -56,7 +56,7 @@ function autoturnCompute:updateAverage()
         sum = sum + ppm
     end
     self.average_duration = sum / #self.duration_history
-}
+end
 
 function autoturnCompute:computeStandardDeviation()
     if #self.duration_history < 2 then
@@ -73,7 +73,7 @@ function autoturnCompute:computeStandardDeviation()
     local variance = sum_of_squared_differences / #self.duration_history
     self.std_dev = math.sqrt(variance)
     logger.info("autoturnCompute:computeStandardDeviation - Standard Deviation:", self.std_dev)
-}
+end
 
 function autoturnCompute:onPageUpdate(new_page)
     local now = os.time()
@@ -122,6 +122,7 @@ end
 
 function autoturnCompute:addToMainMenu(menu_items)
     menu_items.autoturn_compute = {
+        sorting_hint = "navi",
         text = _("Autoturn Compute"),
         sub_item_table = {
             {
@@ -131,7 +132,7 @@ function autoturnCompute:addToMainMenu(menu_items)
                 callback = function()
                     local InfoMessage = require("ui/widget/infomessage")
                     UIManager:show(InfoMessage:new{
-                        text = T(_("Based on the last %1 pages.\n\nLatest Page Duration: %2 seconds \nAverage Page Duration: %3 seconds\nStandard Deviation: %4 seconds"), 
+                        text = T(_("Based on the last %1 pages.\n\nLatest Page Duration: %2 seconds Average Page Duration: %3 seconds\nStandard Deviation: %4 seconds"), 
                             #self.duration_history,
                             self.duration_history[#self.duration_history] and math.floor(self.duration_history[#self.duration_history]) or 0,
                             math.floor(self.average_duration),
