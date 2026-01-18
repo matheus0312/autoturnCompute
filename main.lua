@@ -2,8 +2,6 @@
 -- - change presentation of widget to be shown below autoturn
 -- - show page duration on menu
 -- - compute confiability as standard deviations 
--- - save history between suspend and resume
--- - change history size based on confiability
 
 
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -22,6 +20,7 @@ local autoturnCompute = WidgetContainer:extend{
     duration_history = {},
     max_history_size = 10,
     average_duration = 0,
+    std_dev = 0,
 }
 
 function autoturnCompute:init()
@@ -32,6 +31,7 @@ function autoturnCompute:init()
     self.current_page = nil
     self.page_start_time = os.time()
     self.duration_history = {}
+    self.std_dev = 0
     
     logger.info("autoturnCompute:init - Plugin loaded")
 end
@@ -57,6 +57,23 @@ function autoturnCompute:updateAverage()
     self.average_duration = sum / #self.duration_history
 end
 
+function autoturnCompute:computeStandardDeviation()
+    if #self.duration_history < 2 then
+        self.std_dev = 0
+        return
+    end
+
+    local sum_of_squared_differences = 0
+    for _, duration in ipairs(self.duration_history) do
+        local difference = duration - self.average_duration
+        sum_of_squared_differences = sum_of_squared_differences + (difference * difference)
+    end
+
+    local variance = sum_of_squared_differences / #self.duration_history
+    self.std_dev = math.sqrt(variance)
+    logger.info("autoturnCompute:computeStandardDeviation - Standard Deviation:", self.std_dev)
+end
+
 function autoturnCompute:onPageUpdate(new_page)
     local now = os.time()
     
@@ -76,6 +93,7 @@ function autoturnCompute:onPageUpdate(new_page)
             end
                 
             self:updateAverage()
+            self:computeStandardDeviation()
             logger.info("autoturnCompute:onPageUpdate - Page", self.current_page, "Time:", duration, "Avg:", self.average_duration)
 
         else
@@ -107,15 +125,16 @@ function autoturnCompute:addToMainMenu(menu_items)
         sub_item_table = {
             {
                 text_func = function()
-                    return T(_("Current Average Page Duration: %1"), math.floor(self.average_duration))
+                    return T(_("Avg Page Duration: %1 (±%2)"), math.floor(self.average_duration), math.floor(self.std_dev or 0))
                 end,
                 callback = function()
                     local InfoMessage = require("ui/widget/infomessage")
                     UIManager:show(InfoMessage:new{
-                        text = T(_("Based on the last %1 pages.\n\nLatest Page Duration: %2 seconds \nAverage Page Duration: %3 seconds"), 
+                        text = T(_("Based on the last %1 pages.\n\nLatest Page Duration: %2 seconds \nAverage Page Duration: %3 seconds\nStandard Deviation: %4 seconds"), 
                             #self.duration_history,
                             self.duration_history[#self.duration_history] and math.floor(self.duration_history[#self.duration_history]) or 0,
-                            math.floor(self.average_duration)
+                            math.floor(self.average_duration),
+                            self.std_dev and math.floor(self.std_dev) or 0
                         ),
                     })
                 end
@@ -125,6 +144,7 @@ function autoturnCompute:addToMainMenu(menu_items)
                 callback = function()
                     self.duration_history = {}
                     self.average_duration = 0
+                    self.std_dev = 0
                     self.page_start_time = os.time()
                     local InfoMessage = require("ui/widget/infomessage")
                     UIManager:show(InfoMessage:new{
