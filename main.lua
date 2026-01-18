@@ -22,6 +22,7 @@ local autoturnCompute = WidgetContainer:extend{
     average_duration = 0,
     std_dev = 0,
     popup_shown = false,
+    enabled = false,
 }
 
 function autoturnCompute:init()
@@ -34,8 +35,9 @@ function autoturnCompute:init()
     self.duration_history = {}
     self.std_dev = 0
     self.popup_shown = false
+    self.enabled = false
     
-    logger.info("autoturnCompute:init - Plugin loaded")
+    logger.debug("autoturnCompute:init - Plugin loaded")
 end
 
 -- This function is called automatically when the document engine is fully loaded
@@ -43,13 +45,13 @@ function autoturnCompute:onReaderReady()
     self.current_page = self.ui:getCurrentPage()
     self.page_start_time = os.time()
     
-    logger.info("autoturnCompute:onReaderReady - Initialized. Current Page:", self.current_page)
+    logger.debug("autoturnCompute:onReaderReady - Initialized. Current Page:", self.current_page)
 end
 
 function autoturnCompute:updateAverage()
     if #self.duration_history == 0 then
         self.average_duration = 0
-        logger.info("autoturnCompute:updateAverage - initialize duration average to 0")
+        logger.debug("autoturnCompute:updateAverage - initialize duration average to 0")
         return
     end
     local sum = 0
@@ -73,17 +75,18 @@ function autoturnCompute:computeStandardDeviation()
 
     local variance = sum_of_squared_differences / #self.duration_history
     self.std_dev = math.sqrt(variance)
-    logger.info("autoturnCompute:computeStandardDeviation - Standard Deviation:", self.std_dev)
+    logger.debug("autoturnCompute:computeStandardDeviation - Standard Deviation:", self.std_dev)
 end
 
 function autoturnCompute:onPageUpdate(new_page)
+    if not self.enabled then return end
     local now = os.time()
     
     -- Calculate stats for the page we just FINISHED (self.current_page)
     if self.current_page and self.page_start_time and self.current_page ~= new_page then
         local duration = os.difftime(now, self.page_start_time)
         
-        logger.info("autoturnCompute:onPageUpdate - Last Page Duration: ", duration)
+        logger.debug("autoturnCompute:onPageUpdate - Last Page Duration: ", duration)
         
         if duration > 5 and duration < 600 then
                 
@@ -91,15 +94,15 @@ function autoturnCompute:onPageUpdate(new_page)
             if #self.duration_history > self.max_history_size then
                 table.remove(self.duration_history, 1)
                     
-                logger.info("autoturnCompute:onPageUpdate - remove oldest ppm history entry")
+                logger.debug("autoturnCompute:onPageUpdate - remove oldest history entry")
             end
                 
             self:updateAverage()
             self:computeStandardDeviation()
-            logger.info("autoturnCompute:onPageUpdate - Page", self.current_page, "Time:", duration, "Avg:", self.average_duration)
+            logger.debug("autoturnCompute:onPageUpdate - Page", self.current_page, "Time:", duration, "Avg:", self.average_duration)
 
             local durationSize = #self.duration_history
-            logger.info("autoturnCompute:onPageUpdate - Duration History Size:", durationSize)
+            logger.debug("autoturnCompute:onPageUpdate - Duration History Size:", durationSize)
 
             if not self.popup_shown and #self.duration_history == self.max_history_size then
                 local InfoMessage = require("ui/widget/infomessage")
@@ -109,7 +112,7 @@ function autoturnCompute:onPageUpdate(new_page)
                 self.popup_shown = true
             end
         else
-            logger.info("autoturnCompute:onPageUpdate - page duration out of bounds, skipping.")
+            logger.debug("autoturnCompute:onPageUpdate - page duration out of bounds, skipping.")
         end
     end
     
@@ -117,18 +120,15 @@ function autoturnCompute:onPageUpdate(new_page)
     self.current_page = new_page
     self.page_start_time = now
     
-    logger.info("autoturnCompute:onPageUpdate - current page number:", new_page)
+    logger.debug("autoturnCompute:onPageUpdate - current page number:", new_page)
 end
 
 function autoturnCompute:onSuspend()
-    self.page_start_time = nil
-    logger.info("autoturnCompute:onSuspend")
-    
+    self.page_start_time = nil    
 end
 
 function autoturnCompute:onResume()
     self.page_start_time = os.time()
-    logger.info("autoturnCompute:onResume")
 end
 
 function autoturnCompute:addToMainMenu(menu_items)
@@ -136,6 +136,11 @@ function autoturnCompute:addToMainMenu(menu_items)
         sorting_hint = "navi",
         text = _("Autoturn Compute"),
         sub_item_table = {
+            {
+                text = _("Enabled"),
+                checked_func = function() return self.enabled end,
+                callback = function() self.enabled = not self.enabled end,
+            },
             {
                 text_func = function()
                     return T(_("Avg Page Duration: %1 (±%2)"), math.floor(self.average_duration), math.floor(self.std_dev or 0))
