@@ -1,7 +1,6 @@
 -- todo
 -- - change presentation of widget to be shown below autoturn
 -- - show page duration on menu
--- - show popup with computed information after array is filled
 -- - add checkbox on the menu to activate plugin
 
 
@@ -22,6 +21,7 @@ local autoturnCompute = WidgetContainer:extend{
     max_history_size = 10,
     average_duration = 0,
     std_dev = 0,
+    popup_shown = false,
 }
 
 function autoturnCompute:init()
@@ -33,6 +33,7 @@ function autoturnCompute:init()
     self.page_start_time = os.time()
     self.duration_history = {}
     self.std_dev = 0
+    self.popup_shown = false
     
     logger.info("autoturnCompute:init - Plugin loaded")
 end
@@ -97,6 +98,16 @@ function autoturnCompute:onPageUpdate(new_page)
             self:computeStandardDeviation()
             logger.info("autoturnCompute:onPageUpdate - Page", self.current_page, "Time:", duration, "Avg:", self.average_duration)
 
+            local durationSize = #self.duration_history
+            logger.info("autoturnCompute:onPageUpdate - Duration History Size:", durationSize)
+
+            if not self.popup_shown and #self.duration_history == self.max_history_size then
+                local InfoMessage = require("ui/widget/infomessage")
+                UIManager:show(InfoMessage:new{
+                    text = T("Reading speed computed: %1 (±%2) seconds per page", math.floor(self.average_duration), math.floor(self.std_dev or 0))
+                })
+                self.popup_shown = true
+            end
         else
             logger.info("autoturnCompute:onPageUpdate - page duration out of bounds, skipping.")
         end
@@ -147,6 +158,7 @@ function autoturnCompute:addToMainMenu(menu_items)
                     self.duration_history = {}
                     self.average_duration = 0
                     self.std_dev = 0
+                    self.popup_shown = false
                     self.page_start_time = os.time()
                     local InfoMessage = require("ui/widget/infomessage")
                     UIManager:show(InfoMessage:new{
